@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Messagerie</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: #eef2f1;
+      color: #1d2b29;
+      display: flex;
+      justify-content: center;
+    }
+    main {
+      width: 100%;
+      max-width: 560px;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      background: #ffffff;
+    }
+    header {
+      padding: 12px 16px;
+      border-bottom: 1px solid #e3eae8;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+    }
+    #messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .vide { color: #6b7c79; text-align: center; margin-top: 24px; }
+    .bulle {
+      max-width: 80%;
+      padding: 8px 12px;
+      border-radius: 14px;
+      background: #e3eae8;
+      align-self: flex-start;
+      overflow-wrap: anywhere;
+    }
+    .bulle.moi {
+      background: #1f6f64;
+      color: #ffffff;
+      align-self: flex-end;
+    }
+    .auteur { font-size: 12px; color: #6b7c79; margin-bottom: 2px; }
+    .bulle.moi .auteur { color: #cfe6e2; }
+    form {
+      display: flex;
+      gap: 8px;
+      padding: 12px;
+      border-top: 1px solid #e3eae8;
+    }
+    input {
+      flex: 1;
+      font: inherit;
+      padding: 10px 12px;
+      border: 1px solid #c5d0cd;
+      border-radius: 10px;
+      min-width: 0;
+    }
+    button {
+      font: inherit;
+      font-weight: 600;
+      padding: 10px 16px;
+      border: 0;
+      border-radius: 10px;
+      background: #1f6f64;
+      color: #ffffff;
+      cursor: pointer;
+    }
+    header form { padding: 0; border-top: 0; }
+    header input { width: 120px; flex: none; padding: 6px 10px; }
+    header button { padding: 6px 12px; }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <span>Salon : <strong id="nom-salon">general</strong></span>
+      <form id="form-salon">
+        <input id="champ-salon" placeholder="Nom du salon" maxlength="20" autocomplete="off">
+        <button type="submit">Rejoindre</button>
+      </form>
+    </header>
+
+    <div id="messages"></div>
+
+    <form id="formulaire">
+      <input id="texte" placeholder="Ton message" autocomplete="off" maxlength="500" required>
+      <button type="submit">Envoyer</button>
+    </form>
+  </main>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+
+    // Le pseudo : demandé une seule fois, puis retenu
+    let pseudo = localStorage.getItem("pseudo");
+    if (!pseudo) {
+      pseudo = (prompt("Quel est ton prénom ou pseudo ?") || "Anonyme").trim() || "Anonyme";
+      localStorage.setItem("pseudo", pseudo);
+    }
+
+    // Le salon dans lequel on se trouve
+    let salon = "general";
+
+    const zone = document.getElementById("messages");
+    const formulaire = document.getElementById("formulaire");
+    const champ = document.getElementById("texte");
+    const nomSalon = document.getElementById("nom-salon");
+    const formSalon = document.getElementById("form-salon");
+    const champSalon = document.getElementById("champ-salon");
+
+    // Vide l'écran et affiche le texte "aucun message"
+    function viderEcran() {
+      zone.innerHTML = "";
+      const p = document.createElement("p");
+      p.className = "vide";
+      p.id = "vide";
+      p.textContent = "Aucun message dans ce salon. Écris le premier.";
+      zone.append(p);
+    }
+
+    // Affiche un message à l'écran
+    function afficher(m) {
+      const vide = document.getElementById("vide");
+      if (vide) vide.remove();
+
+      const bulle = document.createElement("div");
+      bulle.className = "bulle" + (m.pseudo === pseudo ? " moi" : "");
+
+      const heure = new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+
+      const auteur = document.createElement("div");
+      auteur.className = "auteur";
+      auteur.textContent = m.pseudo + " à " + heure;
+
+      const texte = document.createElement("div");
+      texte.textContent = m.texte;
+
+      bulle.append(auteur, texte);
+      zone.append(bulle);
+      zone.scrollTop = zone.scrollHeight;
+    }
+
+    // Demande au serveur d'entrer dans un salon
+    function rejoindre(nom) {
+      salon = nom;
+      nomSalon.textContent = salon;
+      socket.emit("rejoindre", salon);
+    }
+
+    // À la connexion (et à la reconnexion), on entre dans le salon actuel
+    socket.on("connect", () => rejoindre(salon));
+
+    // Le serveur nous envoie le cahier du salon : on remet l'écran à zéro
+    socket.on("historique", (liste) => {
+      viderEcran();
+      liste.forEach(afficher);
+    });
+
+    // Un nouveau message arrive dans notre salon
+    socket.on("message", afficher);
+
+    // Bouton "Rejoindre" : changer de salon
+    formSalon.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const nom = champSalon.value.trim().toLowerCase().slice(0, 20);
+      if (!nom) return;
+      rejoindre(nom);
+      champSalon.value = "";
+    });
+
+    // Bouton "Envoyer" : envoyer un message
+    formulaire.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const texte = champ.value.trim();
+      if (!texte) return;
+      socket.emit("message", { pseudo: pseudo, texte: texte });
+      champ.value = "";
+      champ.focus();
+    });
+  </script>
+</body>
+</html>
