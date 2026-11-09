@@ -10,6 +10,11 @@ app.use(express.static('public'))
 
 const historiques = {}
 
+// Envoie à tout le monde la liste des salons qui existent
+function envoyerSalons() {
+  io.emit('salons', Object.keys(historiques))
+}
+
 io.on('connection', (socket) => {
 
   socket.on('rejoindre', (salon) => {
@@ -21,6 +26,7 @@ io.on('connection', (socket) => {
 
     if (!historiques[salon]) historiques[salon] = []
     socket.emit('historique', historiques[salon])
+    envoyerSalons()
   })
 
   socket.on('message', (donnees) => {

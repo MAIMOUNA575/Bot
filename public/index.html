@@ -30,6 +30,25 @@
       align-items: center;
       gap: 8px;
     }
+    #liste-salons {
+      display: flex;
+      gap: 8px;
+      padding: 10px 16px;
+      overflow-x: auto;
+      border-bottom: 1px solid #e3eae8;
+    }
+    .salon {
+      flex: none;
+      padding: 6px 14px;
+      border-radius: 999px;
+      background: #e3eae8;
+      color: #1d2b29;
+      font-weight: 500;
+    }
+    .salon.actif {
+      background: #1f6f64;
+      color: #ffffff;
+    }
     #messages {
       flex: 1;
       overflow-y: auto;
@@ -78,6 +97,8 @@
       color: #ffffff;
       cursor: pointer;
     }
+    button.salon { font-weight: 500; border-radius: 999px; padding: 6px 14px; background: #e3eae8; color: #1d2b29; }
+    button.salon.actif { background: #1f6f64; color: #ffffff; }
     header form { padding: 0; border-top: 0; }
     header input { width: 120px; flex: none; padding: 6px 10px; }
     header button { padding: 6px 12px; }
@@ -88,10 +109,12 @@
     <header>
       <span>Salon : <strong id="nom-salon">general</strong></span>
       <form id="form-salon">
-        <input id="champ-salon" placeholder="Nom du salon" maxlength="20" autocomplete="off">
-        <button type="submit">Rejoindre</button>
+        <input id="champ-salon" placeholder="Nouveau salon" maxlength="20" autocomplete="off">
+        <button type="submit">Créer / rejoindre</button>
       </form>
     </header>
+
+    <div id="liste-salons"></div>
 
     <div id="messages"></div>
 
@@ -112,8 +135,9 @@
       localStorage.setItem("pseudo", pseudo);
     }
 
-    // Le salon dans lequel on se trouve
+    // Le salon actuel, et la dernière liste de salons reçue
     let salon = "general";
+    let salonsConnus = [];
 
     const zone = document.getElementById("messages");
     const formulaire = document.getElementById("formulaire");
@@ -121,6 +145,20 @@
     const nomSalon = document.getElementById("nom-salon");
     const formSalon = document.getElementById("form-salon");
     const champSalon = document.getElementById("champ-salon");
+    const listeSalons = document.getElementById("liste-salons");
+
+    // Dessine la liste des salons sous forme de boutons
+    function afficherSalons() {
+      listeSalons.innerHTML = "";
+      salonsConnus.forEach((nom) => {
+        const bouton = document.createElement("button");
+        bouton.type = "button";
+        bouton.className = "salon" + (nom === salon ? " actif" : "");
+        bouton.textContent = nom;
+        bouton.addEventListener("click", () => rejoindre(nom));
+        listeSalons.append(bouton);
+      });
+    }
 
     // Vide l'écran et affiche le texte "aucun message"
     function viderEcran() {
@@ -140,7 +178,8 @@
       const bulle = document.createElement("div");
       bulle.className = "bulle" + (m.pseudo === pseudo ? " moi" : "");
 
-      const heure = new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+      const date = m.heure ? new Date(m.heure) : new Date();
+      const heure = date.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
 
       const auteur = document.createElement("div");
       auteur.className = "auteur";
@@ -158,11 +197,18 @@
     function rejoindre(nom) {
       salon = nom;
       nomSalon.textContent = salon;
+      afficherSalons();
       socket.emit("rejoindre", salon);
     }
 
     // À la connexion (et à la reconnexion), on entre dans le salon actuel
     socket.on("connect", () => rejoindre(salon));
+
+    // Le serveur nous envoie la liste des salons
+    socket.on("salons", (liste) => {
+      salonsConnus = liste;
+      afficherSalons();
+    });
 
     // Le serveur nous envoie le cahier du salon : on remet l'écran à zéro
     socket.on("historique", (liste) => {
@@ -173,7 +219,7 @@
     // Un nouveau message arrive dans notre salon
     socket.on("message", afficher);
 
-    // Bouton "Rejoindre" : changer de salon
+    // Formulaire du haut : créer ou rejoindre un salon
     formSalon.addEventListener("submit", (e) => {
       e.preventDefault();
       const nom = champSalon.value.trim().toLowerCase().slice(0, 20);
